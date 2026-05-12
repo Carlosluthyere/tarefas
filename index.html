@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Flow - Supabase Pro</title>
+    <!-- Biblioteca Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --text: #1e293b;
+            --danger: #ef4444;
+            --accent: #e0e7ff;
+            --success: #22c55e;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; justify-content: center; padding: 20px; }
+        
+        .app-container { width: 100%; max-width: 450px; }
+        .card { background: var(--card); padding: 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        
+        h2, h3 { text-align: center; margin-bottom: 15px; color: var(--primary); }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #e2e8f0; border-radius: 12px; outline: none; font-size: 16px; }
+        button { width: 100%; padding: 12px; background: var(--primary); border: none; color: white; border-radius: 12px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+
+        .screen { display: none; }
+        .active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Calendário */
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+        .day { padding: 10px 0; font-size: 0.9rem; border-radius: 10px; cursor: pointer; text-align: center; position: relative; }
+        .day.selected { background: var(--primary) !important; color: white; }
+        .day.has-task::after { content: ''; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; background: var(--primary); border-radius: 50%; }
+        .day-name { font-size: 0.7rem; color: #94a3b8; text-align: center; font-weight: bold; }
+
+        /* Lista de Tarefas */
+        .task-item { background: #f8fafc; padding: 12px; border-radius: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--primary); }
+        .task-item.done { opacity: 0.5; text-decoration: line-through; border-left-color: var(--success); }
+        .task-info b { display: block; font-size: 0.9rem; }
+        .task-info span { font-size: 0.7rem; color: #64748b; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        
+        <!-- TELA LOGIN/CADASTRO -->
+        <div id="auth-screen" class="card screen active">
+            <h2>Daily Flow</h2>
+            <input type="email" id="email" placeholder="E-mail">
+            <input type="password" id="password" placeholder="Senha (mín. 6 caracteres)">
+            <button onclick="handleSignIn()">Entrar</button>
+            <button class="btn-outline" onclick="handleSignUp()">Criar Conta Grátis</button>
+        </div>
+
+        <!-- TELA PRINCIPAL -->
+        <div id="main-screen" class="screen">
+            <div class="card">
+                <div class="calendar-header">
+                    <button onclick="changeMonth(-1)" style="width:40px">&lt;</button>
+                    <h4 id="month-year"></h4>
+                    <button onclick="changeMonth(1)" style="width:40px">&gt;</button>
+                </div>
+                <div class="calendar-grid" id="calendar-days"></div>
+            </div>
+
+            <div class="card">
+                <h3 id="selected-date-label">Tarefas</h3>
+                <div id="task-list" style="margin-bottom: 15px;"></div>
+                <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
+                <input type="text" id="task-desc" placeholder="O que fazer?">
+                <input type="time" id="task-time">
+                <button onclick="addTask()">Agendar Tarefa</button>
+                <button class="btn-outline" onclick="handleSignOut()" style="color: var(--danger); border-color: var(--danger);">Sair</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuração do Supabase
+        const SUPABASE_URL = "https://msgvlqoaclkxxujobwpy.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_FXj2IQR_1HIov-UlDIkVWQ_jn2106zs";
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let currentUser = null;
+        let allTasks = [];
+        let selectedDate = new Date().toISOString().split('T')[0];
+        let currentViewDate = new Date();
+
+        // --- AUTENTICAÇÃO ---
+        async function handleSignUp() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value.trim();
+
+            if (!email || !password) return alert("Preencha e-mail e senha!");
+            if (password.length < 6) return alert("A senha deve ter no mínimo 6 caracteres!");
+
+            const { data, error } = await _supabase.auth.signUp({ email, password });
+            
+            if (error) alert("Erro: " + error.message);
+            else alert("Cadastro realizado! Agora você já pode entrar.");
+        }
+
+        async function handleSignIn() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value.trim();
+
+            if (!email || !password) return alert("Preencha e-mail e senha!");
+
+            const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
+            
+            if (error) alert("Erro: " + error.message);
+            else {
+                currentUser = data.user;
+                showScreen('main-screen');
+                loadTasks();
+            }
+        }
+
+        async function handleSignOut() {
+            await _supabase.auth.signOut();
+            location.reload();
+        }
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        // --- TAREFAS (DATABASE) ---
+        async function loadTasks() {
+            const { data, error } = await _supabase
+                .from('tasks')
+                .select('*')
+                .eq('user_id', currentUser.id);
+            
+            if (!error) {
+                allTasks = data;
+                renderCalendar();
+                renderTasks();
+            }
+        }
+
+        async function addTask() {
+            const description = document.getElementById('task-desc').value;
+            const task_time = document.getElementById('task-time').value;
+            
+            if(!description || !task_time) return alert("Preencha a descrição e o horário!");
+
+            const { error } = await _supabase.from('tasks').insert([{
+                user_id: currentUser.id,
+                description,
+                task_date: selectedDate,
+                task_time,
+                is_done: false
+            }]);
+
+            if (error) alert("Erro ao salvar: " + error.message);
+            else {
+                document.getElementById('task-desc').value = '';
+                loadTasks();
+            }
+        }
+
+        async function toggleTask(id, currentStatus) {
+            const { error } = await _supabase
+                .from('tasks')
+                .update({ is_done: !currentStatus })
+                .eq('id', id);
+            
+            if (!error) loadTasks();
+        }
+
+        async function deleteTask(id) {
+            if(!confirm("Deseja excluir esta tarefa?")) return;
+            const { error } = await _supabase.from('tasks').delete().eq('id', id);
+            if (!error) loadTasks();
+        }
+
+        // --- INTERFACE (UI) ---
+        function renderCalendar() {
+            const grid = document.getElementById('calendar-days');
+            grid.innerHTML = '';
+            const year = currentViewDate.getFullYear();
+            const month = currentViewDate.getMonth();
+            
+            document.getElementById('month-year').innerText = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(currentViewDate);
+            ['D','S','T','Q','Q','S','S'].forEach(d => grid.innerHTML += `<div class="day-name">${d}</div>`);
+
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            for(let i=0; i < firstDay; i++) grid.innerHTML += `<div></div>`;
+
+            for(let d=1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const hasTask = allTasks.some(t => t.task_date === dateStr);
+                const isSelected = dateStr === selectedDate ? 'selected' : '';
+                
+                grid.innerHTML += `<div class="day ${isSelected} ${hasTask ? 'has-task' : ''}" onclick="selectDate('${dateStr}')">${d}</div>`;
+            }
+        }
+
+        function selectDate(date) {
+            selectedDate = date;
+            document.getElementById('selected-date-label').innerText = `Tarefas: ${date.split('-').reverse().join('/')}`;
+            renderCalendar();
+            renderTasks();
+        }
+
+        function changeMonth(step) {
+            currentViewDate.setMonth(currentViewDate.getMonth() + step);
+            renderCalendar();
+        }
+
+        function renderTasks() {
+            const list = document.getElementById('task-list');
+            list.innerHTML = '';
+            const filtered = allTasks.filter(t => t.task_date === selectedDate)
+                                     .sort((a,b) => a.task_time.localeCompare(b.task_time));
+
+            if(filtered.length === 0) {
+                list.innerHTML = '<p style="text-align:center; color:#94a3b8; font-size:0.8rem;">Nenhuma tarefa para este dia.</p>';
+                return;
+            }
+
+            filtered.forEach(t => {
+                list.innerHTML += `
+                    <div class="task-item ${t.is_done ? 'done' : ''}">
+                        <div class="task-info" onclick="toggleTask('${t.id}', ${t.is_done})" style="cursor:pointer; flex: 1;">
+                            <b>${t.description}</b>
+                            <span>⏰ ${t.task_time}</span>
+                        </div>
+                        <span onclick="deleteTask('${t.id}')" style="cursor:pointer; padding: 5px;">🗑️</span>
+                    </div>`;
+            });
+        }
+    </script>
+</body>
+</html>
