@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Daily Flow - Supabase Pro</title>
-    <!-- Biblioteca Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -51,16 +50,24 @@
 
     <div class="app-container">
         
-        <!-- TELA LOGIN/CADASTRO -->
-        <div id="auth-screen" class="card screen active">
-            <h2>Daily Flow</h2>
-            <input type="email" id="email" placeholder="E-mail">
-            <input type="password" id="password" placeholder="Senha (mín. 6 caracteres)">
+        <div id="login-screen" class="card screen active">
+            <h2>Entrar no Daily Flow</h2>
+            <input type="email" id="login-email" placeholder="Seu e-mail">
+            <input type="password" id="login-password" placeholder="Sua senha">
             <button onclick="handleSignIn()">Entrar</button>
-            <button class="btn-outline" onclick="handleSignUp()">Criar Conta Grátis</button>
+            <p style="text-align: center; margin-top: 15px; font-size: 14px;">Não tem uma conta?</p>
+            <button class="btn-outline" onclick="showScreen('signup-screen')">Criar uma conta</button>
         </div>
 
-        <!-- TELA PRINCIPAL -->
+        <div id="signup-screen" class="card screen">
+            <h2>Criar Conta Grátis</h2>
+            <input type="email" id="signup-email" placeholder="E-mail para cadastro">
+            <input type="password" id="signup-password" placeholder="Senha (mín. 6 caracteres)">
+            <button onclick="handleSignUp()">Cadastrar</button>
+            <p style="text-align: center; margin-top: 15px; font-size: 14px;">Já possui conta?</p>
+            <button class="btn-outline" onclick="showScreen('login-screen')">Voltar para o Login</button>
+        </div>
+
         <div id="main-screen" class="screen">
             <div class="card">
                 <div class="calendar-header">
@@ -95,29 +102,43 @@
         let currentViewDate = new Date();
 
         // --- AUTENTICAÇÃO ---
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
         async function handleSignUp() {
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value.trim();
+            const email = document.getElementById('signup-email').value.trim();
+            const password = document.getElementById('signup-password').value.trim();
 
             if (!email || !password) return alert("Preencha e-mail e senha!");
             if (password.length < 6) return alert("A senha deve ter no mínimo 6 caracteres!");
 
             const { data, error } = await _supabase.auth.signUp({ email, password });
             
-            if (error) alert("Erro: " + error.message);
-            else alert("Cadastro realizado! Agora você já pode entrar.");
+            if (error) {
+                alert("Erro: " + error.message);
+            } else {
+                alert("Cadastro realizado com sucesso! Use seus dados para entrar.");
+                showScreen('login-screen');
+                // Limpar campos de cadastro
+                document.getElementById('signup-email').value = "";
+                document.getElementById('signup-password').value = "";
+            }
         }
 
         async function handleSignIn() {
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value.trim();
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value.trim();
 
             if (!email || !password) return alert("Preencha e-mail e senha!");
 
             const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
             
-            if (error) alert("Erro: " + error.message);
-            else {
+            if (error) {
+                alert("Erro: " + error.message);
+            } else {
                 currentUser = data.user;
                 showScreen('main-screen');
                 loadTasks();
@@ -127,11 +148,6 @@
         async function handleSignOut() {
             await _supabase.auth.signOut();
             location.reload();
-        }
-
-        function showScreen(id) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
         }
 
         // --- TAREFAS (DATABASE) ---
